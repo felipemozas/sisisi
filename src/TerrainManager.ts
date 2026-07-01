@@ -39,12 +39,15 @@ export class TerrainManager {
     // Necesitamos:
     // - 1 chunk inmediatamente atrás del plano actual (ndx + 1)
     // - El chunk actual donde se sitúa la cámara (ndx)
-    // - Hasta 2 chunks de terreno futuro adelante (ndx - 1, ndx - 2)
+    // - Hasta 3 chunks de terreno futuro adelante (ndx - 1, ndx - 2, ndx - 3)
+    //   La generación anticipada (hasta -3) asegura que las físicas e inercias de colisión
+    //   estén listas en el mundo de Cannon antes de aproximarse visualmente.
     const requiredIndices = [
       currentChunkIndex + 1,
       currentChunkIndex,
       currentChunkIndex - 1,
       currentChunkIndex - 2,
+      currentChunkIndex - 3,
     ];
 
     const requiredZs = new Set<number>();

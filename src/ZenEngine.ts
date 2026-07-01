@@ -178,8 +178,25 @@ export class ZenEngine {
     this.vehicle.setInputs(up, down, left, right, brake);
 
     // 2. Resolver comportamiento físico en Cannon
-    this.vehicle.updatePhysics();
+    this.vehicle.updatePhysics(this.elevationService);
     this.physicsWorld.step(1 / 60);
+
+    // Red de Seguridad Activa (Failsafe Teleport - Defensa Técnica)
+    const currentPosX = this.vehicle.chassisBody.position.x;
+    const currentPosZ = this.vehicle.chassisBody.position.z;
+    const mathGroundY = this.elevationService.getElevation(currentPosX, currentPosZ);
+
+    if (this.vehicle.chassisBody.position.y < mathGroundY - 2.0) {
+      // Neutralizar el tensor de momento lineal e inercial para prevenir giros caóticos
+      this.vehicle.chassisBody.velocity.set(0, 0, 0);
+      this.vehicle.chassisBody.angularVelocity.set(0, 0, 0);
+      
+      // Rescatar al jugador y relocalizar de forma segura en asfalto/terreno seco
+      this.vehicle.chassisBody.position.y = mathGroundY + 1.5;
+      
+      // Enderezar físicamente el auto alineándolo con el horizonte
+      this.vehicle.chassisBody.quaternion.set(0, 0, 0, 1);
+    }
 
     // Sincronizar coordenadas físicas hacia mallas visuales correspondientes
     this.vehicle.syncVisuals();

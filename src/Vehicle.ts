@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { PhysicsWorld } from './PhysicsWorld';
+import { TerrainElevationService } from './TerrainElevationService';
 
 /**
  * Clase Vehicle (Capa de Servicio OOP)
@@ -94,7 +95,7 @@ export class Vehicle {
     const wheelOptions = {
       radius: wheelRadius,
       directionLocal: new CANNON.Vec3(0, -1, 0), // Dirección amortiguadora hacia abajo
-      suspensionRestLength: 0.52,                 // Altura de descanso de los muelles
+      suspensionRestLength: 0.68,                 // Altura de descanso incrementada de forma defensiva
       suspensionStiffness: 28,                    // Amortiguación elástica responsiva
       maxSuspensionForce: 100000,
       dampingRelaxation: 2.3,                     // Resistencia a la distensión
@@ -157,9 +158,10 @@ export class Vehicle {
   }
 
   /**
-   * Transfiere las fuerzas mecánicas aplicadas por el usuario al vehículo físico
+   * Transfiere las fuerzas mecánicas aplicadas por el usuario al vehículo físico.
+   * Cuenta con un amortiguador preventivo en juntas críticas basado en la altura matemática del terreno.
    */
-  public updatePhysics(): void {
+  public updatePhysics(elevationService?: TerrainElevationService): void {
     // 1. Aceleración / Marcha atrás coordinada (Tracción Trasera en ruedas 2 y 3)
     let engineForce = 0;
     if (this.isAcel) {
@@ -186,6 +188,30 @@ export class Vehicle {
     const brakeForce = this.isBraking ? this.brakeForceMax : 0;
     for (let i = 0; i < 4; i++) {
       this.raycastVehicle.setBrake(brakeForce, i);
+    }
+
+    // 4. Colchón defensivo anti-junturas microscópicas (Raycast Margin Cushion)
+    if (elevationService) {
+      const px = this.chassisBody.position.x;
+      const pz = this.chassisBody.position.z;
+      const groundHeight = elevationService.getElevation(px, pz);
+      const distToGround = this.chassisBody.position.y - groundHeight;
+
+      // Si el auto está a punto de penetrar o perder muelle de manera anómala,
+      // aplicamos una sustentación vertical compensante progresiva para evitar el vacío.
+      if (distToGround < 0.65 && distToGround > -1.0) {
+        const penetration = 0.65 - distToGround;
+        const liftCoefficient = 15000; // 15k Newtons de amortiguación elástica vertical
+        const liftForce = penetration * liftCoefficient;
+
+        // Modifica la fuerza vertical de amortiguador artificial estable
+        this.chassisBody.force.y += liftForce;
+
+        // Limita e hidrata la velocidad de caída brusca del chasis
+        if (this.chassisBody.velocity.y < -1) {
+          this.chassisBody.velocity.y *= 0.82;
+        }
+      }
     }
   }
 

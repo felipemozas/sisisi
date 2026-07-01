@@ -11,24 +11,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Instanciador OOP del Motor de Render con Three.js
   const engine = new ZenEngine(container);
 
-  // Inicialización segura del AudioContext de la Web Audio API tras interacción interactiva explícita
-  const btnStartAudio = document.getElementById('btn-start-audio');
-  const audioStartOverlay = document.getElementById('audio-start-overlay');
-  if (btnStartAudio) {
-    btnStartAudio.addEventListener('click', async () => {
-      if (engine.audioService) {
-        await engine.audioService.start();
-      }
-      if (audioStartOverlay) {
-        audioStartOverlay.classList.add('opacity-0');
-        audioStartOverlay.classList.remove('pointer-events-auto');
-        audioStartOverlay.classList.add('pointer-events-none');
-        setTimeout(() => {
-          audioStartOverlay.remove();
-        }, 710);
-      }
-    });
-  }
+  // Inicialización de audio autogestionada sin overlays molestos en el primer gesto de interacción
+  const unlockAudio = async () => {
+    if (engine.audioService && !engine.audioService.isInitialized()) {
+      await engine.audioService.start();
+    }
+    // Remover listeners una vez activados
+    window.removeEventListener('click', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+  };
+  window.addEventListener('click', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
 
   // Iniciar la animación y el bucle de renderizado optimizado
   engine.start();

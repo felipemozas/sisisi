@@ -47,9 +47,9 @@ export class PhysicsWorld {
    * Ejecuta el avance en el tiempo de la simulación del mundo físico
    */
   public step(deltaTime: number): void {
-    // Usamos pasos fijos estables de 1/60 para mantener el motor síncrono y evitar saltos inestables
-    const fixedTimeStep = 1 / 60;
-    this.world.step(fixedTimeStep, deltaTime, 4);
+    // Implementar paso de tiempo fijo estricto con substepping (hasta 10 sub-pasos de física interna)
+    // para prevenir el efecto "tunneling" a altas velocidades
+    this.world.step(1 / 60, deltaTime, 10);
   }
 
   /**
