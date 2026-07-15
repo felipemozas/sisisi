@@ -23,7 +23,8 @@ export class TerrainChunk {
     chunkZ: number,
     size: number,
     elevationService: TerrainElevationService,
-    physicsWorld?: PhysicsWorld
+    physicsWorld?: PhysicsWorld,
+    treeCount: number = 24
   ) {
     this.chunkZ = chunkZ;
 
@@ -160,7 +161,6 @@ export class TerrainChunk {
 
     // Determinista por coordenadas de sección Z para evitar parpadeos/reseteos
     const seed = Math.abs(Math.sin(chunkZ)) * 1000;
-    const treeCount = 24;
 
     for (let t = 0; t < treeCount; t++) {
       // Cálculo determinista pseudo-aleatorio basado en la sección Z y el índice de árbol

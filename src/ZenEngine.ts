@@ -6,6 +6,7 @@ import { TerrainManager } from './TerrainManager';
 import { Vehicle } from './Vehicle';
 import { PhysicsWorld } from './PhysicsWorld';
 import { ZenAudioService } from './ZenAudioService';
+import { SkyDome } from './SkyDome';
 
 /**
  * Clase ZenEngine (Clase Coordinadora Principal - OOP)
@@ -20,12 +21,15 @@ export class ZenEngine {
   public directionalLight: THREE.DirectionalLight;
   public speed: number = 0;
   public distance: number = 0;
-  public isRunning: boolean = false;
+  public isRunning: boolean = true;
+  public weather: 'zen' | 'rain' | 'fog' = 'zen';
+  private rainParticles: THREE.Points | null = null;
   
   public vehicle: Vehicle;
   public elevationService: TerrainElevationService;
   public physicsWorld: PhysicsWorld;
   public audioService: ZenAudioService;
+  public skyDome: SkyDome;
   
   private noise: Noise;
   private terrainManager: TerrainManager;
@@ -47,7 +51,9 @@ export class ZenEngine {
   constructor(container: HTMLElement) {
     // 1. Inicializar Escena de Three.js
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf4f1ea); // Warm Clean off-white beige
+    
+    // El fondo se controla proceduralmente mediante nuestro Skydome con Shaders
+    this.skyDome = new SkyDome(this.scene);
     
     // Añadimos Niebla (Fog) sutil para crear la ilusión de un horizonte infinito estilo Zen
     this.scene.fog = new THREE.FogExp2(0xf4f1ea, 0.0075);
@@ -144,6 +150,171 @@ export class ZenEngine {
   }
 
   /**
+   * Cambia dinámicamente el estado del clima en el motor y la escena
+   */
+  public setWeather(weather: 'zen' | 'rain' | 'fog'): void {
+    this.weather = weather;
+
+    if (weather === 'zen') {
+      this.terrainManager.treeCount = 24;
+      this.removeRain();
+    } else if (weather === 'rain') {
+      this.terrainManager.treeCount = 36;
+      this.initRain();
+    } else if (weather === 'fog') {
+      this.terrainManager.treeCount = 12;
+      this.removeRain();
+    }
+
+    // 1.5. Actualizar el estado del clima en el servicio de audio
+    this.audioService.setWeather(weather);
+
+    // 2. Reconstruir chunks de terreno con la nueva densidad procedural de árboles
+    this.terrainManager.clearAll(this.scene);
+    this.terrainManager.update(this.scene, this.vehicle.position.z);
+  }
+
+  /**
+   * Inicializa las partículas de lluvia
+   */
+  private initRain(): void {
+    if (this.rainParticles) return;
+
+    const particleCount = 1200;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+
+    const carPos = this.vehicle.position;
+    for (let i = 0; i < particleCount; i++) {
+      positions[i * 3] = carPos.x + (Math.random() - 0.5) * 40;
+      positions[i * 3 + 1] = carPos.y + Math.random() * 25;
+      positions[i * 3 + 2] = carPos.z + (Math.random() - 0.5) * 40;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const material = new THREE.PointsMaterial({
+      color: 0x718096,
+      size: 0.12,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+    });
+
+    this.rainParticles = new THREE.Points(geometry, material);
+    this.scene.add(this.rainParticles);
+  }
+
+  /**
+   * Elimina de forma limpia las partículas de lluvia
+   */
+  private removeRain(): void {
+    if (this.rainParticles) {
+      this.scene.remove(this.rainParticles);
+      this.rainParticles.geometry.dispose();
+      if (Array.isArray(this.rainParticles.material)) {
+        this.rainParticles.material.forEach(m => m.dispose());
+      } else {
+        this.rainParticles.material.dispose();
+      }
+      this.rainParticles = null;
+    }
+  }
+
+  /**
+   * Actualiza el ciclo día-noche de forma cíclica y fluida según la distancia recorrida
+   * e integra modificadores meteorológicos de forma reactiva en tiempo real.
+   */
+  private updateEnvironment(): void {
+    // Definimos la duración del ciclo completo en unidades de distancia (3.0 km/unidades)
+    const cycleLength = 3.0;
+    const progress = (this.distance % cycleLength) / cycleLength;
+
+    // Segmentos clave del ciclo (Mediodía -> Atardecer/Zen -> Noche -> Amanecer -> Mediodía)
+    // Cada segmento define los colores para el cenit (skyColor) y el horizonte (horizonColor)
+    const segments = [
+      { t: 0.0,  skyColor: 0xb2d9ea, horizonColor: 0xe3f2fd, fogDensity: 0.0012, ambientColor: 0xd1f3ff, ambientIntensity: 0.7,  dirColor: 0xfffdf2, dirIntensity: 1.2,  dirX: 20,  dirY: 40, dirZ: 10 },  // Mediodía
+      { t: 0.25, skyColor: 0xffcb9a, horizonColor: 0xffe8d6, fogDensity: 0.0015, ambientColor: 0xffe4d1, ambientIntensity: 0.6,  dirColor: 0xff7c3b, dirIntensity: 1.4,  dirX: 38,  dirY: 7,  dirZ: 12 },  // Atardecer (Zen)
+      { t: 0.50, skyColor: 0x060814, horizonColor: 0x0c0f24, fogDensity: 0.003,  ambientColor: 0x1a2130, ambientIntensity: 0.15, dirColor: 0x7f8ea6, dirIntensity: 0.3,  dirX: -25, dirY: 25, dirZ: -10 }, // Noche cósmica
+      { t: 0.75, skyColor: 0xd6bcfb, horizonColor: 0xfbe6fc, fogDensity: 0.0025, ambientColor: 0xfeb2b2, ambientIntensity: 0.45, dirColor: 0xf6ad55, dirIntensity: 0.85, dirX: -35, dirY: 12, dirZ: 10 },  // Amanecer místico
+      { t: 1.0,  skyColor: 0xb2d9ea, horizonColor: 0xe3f2fd, fogDensity: 0.0012, ambientColor: 0xd1f3ff, ambientIntensity: 0.7,  dirColor: 0xfffdf2, dirIntensity: 1.2,  dirX: 20,  dirY: 40, dirZ: 10 }   // Mediodía
+    ];
+
+    let idx = 0;
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (progress >= segments[i].t && progress <= segments[i + 1].t) {
+        idx = i;
+        break;
+      }
+    }
+
+    const segStart = segments[idx];
+    const segEnd = segments[idx + 1];
+    const segProgress = (progress - segStart.t) / (segEnd.t - segStart.t);
+
+    // Interpolación lineal entre los límites del segmento actual
+    const baseSky = new THREE.Color(segStart.skyColor).lerp(new THREE.Color(segEnd.skyColor), segProgress);
+    const baseHorizon = new THREE.Color(segStart.horizonColor).lerp(new THREE.Color(segEnd.horizonColor), segProgress);
+    let baseFogDensity = segStart.fogDensity + (segEnd.fogDensity - segStart.fogDensity) * segProgress;
+    const baseAmbient = new THREE.Color(segStart.ambientColor).lerp(new THREE.Color(segEnd.ambientColor), segProgress);
+    let baseAmbientIntensity = segStart.ambientIntensity + (segEnd.ambientIntensity - segStart.ambientIntensity) * segProgress;
+    const baseDir = new THREE.Color(segStart.dirColor).lerp(new THREE.Color(segEnd.dirColor), segProgress);
+    let baseDirIntensity = segStart.dirIntensity + (segEnd.dirIntensity - segStart.dirIntensity) * segProgress;
+
+    const dirX = segStart.dirX + (segEnd.dirX - segStart.dirX) * segProgress;
+    const dirY = segStart.dirY + (segEnd.dirY - segStart.dirY) * segProgress;
+    const dirZ = segStart.dirZ + (segEnd.dirZ - segStart.dirZ) * segProgress;
+
+    // Aplicar modificadores de clima sobre el ciclo base
+    if (this.weather === 'rain') {
+      baseSky.lerp(new THREE.Color(0x2d3748), 0.7);
+      baseHorizon.lerp(new THREE.Color(0x2d3748), 0.7);
+      baseAmbient.lerp(new THREE.Color(0x4a5568), 0.6);
+      baseAmbientIntensity *= 0.6;
+      baseDir.lerp(new THREE.Color(0x4a5568), 0.8);
+      baseDirIntensity *= 0.35;
+      baseFogDensity += 0.012;
+    } else if (this.weather === 'fog') {
+      baseSky.lerp(new THREE.Color(0xe2e8f0), 0.85);
+      baseHorizon.lerp(new THREE.Color(0xe2e8f0), 0.85);
+      baseAmbient.lerp(new THREE.Color(0xedf2f7), 0.8);
+      baseAmbientIntensity *= 0.9;
+      baseDir.lerp(new THREE.Color(0xcbd5e0), 0.9);
+      baseDirIntensity *= 0.15;
+      baseFogDensity += 0.032;
+    }
+
+    // El fondo principal se asume controlado por la esfera del skydome, pero mantenemos scene.background como fallback
+    this.scene.background = baseSky;
+    
+    // Configurar la niebla para que coincida EXACTAMENTE con el color del horizonte del skydome.
+    // Esto asegura que el terreno lejano se disuelva de forma invisible en la base del cielo.
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.copy(baseHorizon);
+      this.scene.fog.density = baseFogDensity;
+    }
+
+    this.ambientLight.color.copy(baseAmbient);
+    this.ambientLight.intensity = baseAmbientIntensity;
+
+    this.directionalLight.color.copy(baseDir);
+    this.directionalLight.intensity = baseDirIntensity;
+
+    // Sincronizar posición de la luz de costado respecto al auto
+    this.directionalLight.position.set(
+      this.vehicle.position.x + dirX,
+      this.vehicle.position.y + dirY,
+      this.vehicle.position.z + dirZ
+    );
+
+    // Sincronizar el skydome dinámico procedimental (tiempo, posición del coche, clima y progreso)
+    if (this.skyDome) {
+      this.skyDome.setColors(baseSky, baseHorizon);
+      this.skyDome.update(0.016, this.vehicle.position, this.weather, progress);
+    }
+  }
+
+  /**
    * Arranca la simulación del mundo
    */
   public start(): void {
@@ -211,12 +382,8 @@ export class ZenEngine {
       this.audioService.update(this.vehicle.realSpeed * 3.6);
     }
 
-    // 4. Mapear luces direccionales para mantener contrastes y sombreados consistentes
-    this.directionalLight.position.set(
-      this.vehicle.position.x + 25,
-      this.vehicle.position.y + 40,
-      this.vehicle.position.z + 15
-    );
+    // 4. Actualizar el ciclo día-noche dinámico y la iluminación según el clima y la distancia
+    this.updateEnvironment();
 
     // 5. Cámara de seguimiento (Chase Cam) estricta pero suave (Fallo 1)
     // Calcula el vector de dirección hacia adelante (forward) basado en la rotación (quaternion) del vehículo.
@@ -245,6 +412,45 @@ export class ZenEngine {
     );
     this.camera.lookAt(posicionAuto);
 
+    // 5.2. Escalamiento sutil y fluido de FOV basado en la velocidad para realzar el dinamismo
+    // Base FOV de 60, escalando hasta un máximo seguro de +10 grados de forma progresiva.
+    const baseFov = 60;
+    const maxFovIncrease = 10;
+    const targetFov = baseFov + Math.min(this.vehicle.realSpeed * 0.35, maxFovIncrease);
+    // Interpolación muy suave (lerp) para conservar la paz estética 'Zen' sin movimientos bruscos
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, 0.05);
+    this.camera.updateProjectionMatrix();
+
+    // 5.5. Simular partículas de lluvia si está lluvioso
+    if (this.weather === 'rain' && this.rainParticles) {
+      const positionAttr = this.rainParticles.geometry.attributes.position as THREE.BufferAttribute;
+      const carPos = this.vehicle.position;
+      const count = positionAttr.count;
+
+      for (let i = 0; i < count; i++) {
+        let x = positionAttr.getX(i);
+        let y = positionAttr.getY(i);
+        let z = positionAttr.getZ(i);
+
+        // Caer verticalmente y desplazarse ligeramente hacia atrás del auto para simular velocidad
+        y -= 0.35;
+        z += this.vehicle.realSpeed * 0.05 + 0.02;
+
+        const dx = x - carPos.x;
+        const dz = z - carPos.z;
+
+        // Reposicionar si cae por debajo del nivel del suelo o se aleja demasiado
+        if (y < carPos.y - 4 || Math.abs(dx) > 20 || Math.abs(dz) > 20) {
+          x = carPos.x + (Math.random() - 0.5) * 40;
+          y = carPos.y + 15 + Math.random() * 10;
+          z = carPos.z + (Math.random() - 0.5) * 40;
+        }
+
+        positionAttr.setXYZ(i, x, y, z);
+      }
+      positionAttr.needsUpdate = true;
+    }
+
     // 6. Carga procedural y física en Z actual del auto
     this.terrainManager.update(this.scene, this.vehicle.position.z);
 
@@ -256,6 +462,7 @@ export class ZenEngine {
    */
   public destroy(container: HTMLElement): void {
     this.stop();
+    this.removeRain();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
 
@@ -269,5 +476,8 @@ export class ZenEngine {
 
     this.terrainManager.clearAll(this.scene);
     this.vehicle.destroy(this.scene, this.physicsWorld);
+    if (this.skyDome) {
+      this.skyDome.destroy(this.scene);
+    }
   }
 }

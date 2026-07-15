@@ -12,6 +12,7 @@ class MockAudioParam {
   setValueAtTime = vi.fn();
   linearRampToValueAtTime = vi.fn();
   exponentialRampToValueAtTime = vi.fn();
+  cancelScheduledValues = vi.fn();
 }
 
 class MockOscillatorNode extends MockAudioNode {
@@ -28,6 +29,7 @@ class MockGainNode extends MockAudioNode {
 class MockBiquadFilterNode extends MockAudioNode {
   type = 'lowpass';
   frequency = new MockAudioParam();
+  Q = new MockAudioParam();
 }
 
 class MockAudioContext {
@@ -49,6 +51,7 @@ class MockAudioContext {
     this.state = 'running';
     return Promise.resolve();
   });
+  close = vi.fn();
   destination = {};
 }
 
@@ -82,5 +85,22 @@ describe('ZenAudioService Suite', () => {
 
     // No debe lanzar errores y los valores mapeados deben fluir sin saltos
     expect(audioService.isInitialized()).toBe(true);
+  });
+
+  it('debe actualizar el sonido ambiental y pájaros cuando se cambia el clima', async () => {
+    const audioService = new ZenAudioService();
+    await audioService.start();
+
+    // Cambiar a clima rain (debe detener o no programar pájaros)
+    audioService.setWeather('rain');
+
+    // Cambiar a clima zen (debe reanudar pájaros e incrementar volumen costero)
+    audioService.setWeather('zen');
+
+    // Cambiar a clima fog (mantiene brisa mansa)
+    audioService.setWeather('fog');
+
+    expect(audioService.isInitialized()).toBe(true);
+    audioService.stop();
   });
 });

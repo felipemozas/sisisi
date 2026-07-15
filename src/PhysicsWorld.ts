@@ -9,6 +9,7 @@ export class PhysicsWorld {
   public world: CANNON.World;
   public groundMaterial: CANNON.Material;
   public wheelMaterial: CANNON.Material;
+  public chassisMaterial: CANNON.Material;
 
   constructor() {
     this.world = new CANNON.World();
@@ -26,6 +27,7 @@ export class PhysicsWorld {
     // Inicializar materiales físicos
     this.groundMaterial = new CANNON.Material('ground');
     this.wheelMaterial = new CANNON.Material('wheel');
+    this.chassisMaterial = new CANNON.Material('chassis');
 
     // Configurar contact material para definir tracción y frenado realista
     const contactMat = new CANNON.ContactMaterial(
@@ -41,6 +43,21 @@ export class PhysicsWorld {
     );
 
     this.world.addContactMaterial(contactMat);
+
+    // Configurar contact material de muy baja fricción para el chasis
+    const chassisContactMat = new CANNON.ContactMaterial(
+      this.groundMaterial,
+      this.chassisMaterial,
+      {
+        friction: 0.02,     // Extremadamente deslizante para evitar "snagging" y giros locos al tocar suelo
+        restitution: 0.05,  // Casi nada de rebote para no salir volando
+        contactEquationStiffness: 1e7,
+        contactEquationRelaxation: 3,
+        frictionEquationStiffness: 1e7,
+      }
+    );
+
+    this.world.addContactMaterial(chassisContactMat);
   }
 
   /**

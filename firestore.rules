@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global safety net (Default Deny Catch-all)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global utility primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper to extract incoming resource state
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Helper to extract existing resource state
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. Validation blueprint for UserScore entities
+    function isValidUserScore(data) {
+      return data.keys().hasAll(['userId', 'email', 'highScore', 'updatedAt']) 
+        && data.keys().size() == 4
+        && data.userId is string 
+        && data.userId.size() <= 128
+        && data.email is string 
+        && data.email.size() <= 256
+        && data.highScore is number 
+        && data.highScore >= 0
+        && data.updatedAt is timestamp;
+    }
+
+    // 3. Collection rules for User Score records
+    match /scores/{userId} {
+      allow get: if isSignedIn() 
+        && isValidId(userId) 
+        && userId == request.auth.uid;
+        
+      allow list: if isSignedIn() 
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isEmailVerified()
+        && isValidId(userId)
+        && userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && incoming().email == request.auth.token.email
+        && incoming().updatedAt == request.time
+        && isValidUserScore(incoming());
+
+      allow update: if isSignedIn()
+        && isEmailVerified()
+        && isValidId(userId)
+        && userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().email == existing().email
+        && incoming().updatedAt == request.time
+        && isValidUserScore(incoming())
+        && incoming().highScore >= existing().highScore
+        && incoming().diff(existing()).affectedKeys().hasOnly(['highScore', 'updatedAt']);
+
+      allow delete: if false;
+    }
+  }
+}

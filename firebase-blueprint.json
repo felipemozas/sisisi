@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "UserScore": {
+      "title": "User Score Record",
+      "description": "Represents the user's high score in Zen Infinite Driving.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "highScore": {
+          "type": "number",
+          "description": "High score distance in kilometers"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["userId", "email", "highScore", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "scores/{userId}": {
+      "schema": "UserScore",
+      "description": "A collection storing individual user high scores, with the document ID corresponding to the authenticated user's UID."
+    }
+  }
+}

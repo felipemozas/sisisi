@@ -10,6 +10,7 @@ import { PhysicsWorld } from './PhysicsWorld';
  */
 export class TerrainManager {
   public chunks: Map<number, TerrainChunk>;
+  public treeCount: number = 24;
   private chunkSize: number;
   private elevationService: TerrainElevationService;
   private physicsWorld?: PhysicsWorld;
@@ -63,7 +64,8 @@ export class TerrainManager {
           z,
           this.chunkSize,
           this.elevationService,
-          this.physicsWorld
+          this.physicsWorld,
+          this.treeCount
         );
         this.chunks.set(z, chunk);
       }
